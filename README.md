@@ -74,7 +74,7 @@ curl -X POST "http://localhost:8000/query" \
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design decisions.
+See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed design decisions.
 
 ## Learnings
 
