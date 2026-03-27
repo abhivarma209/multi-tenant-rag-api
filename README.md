@@ -78,4 +78,4 @@ See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed design decisions.
 
 ## Learnings
 
-See [docs/LEARNINGS.md](./docs/LEARNINGS.md) for concepts covered building this project.
+See [LEARNINGS.md](./docs/LEARNINGS.md) for concepts covered building this project.
