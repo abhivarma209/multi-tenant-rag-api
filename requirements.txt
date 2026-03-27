@@ -1,0 +1,16 @@
+fastapi~=0.135.2
+uvicorn
+openai
+instructor
+sqlalchemy~=2.0.48
+pydantic
+python-dotenv
+python-multipart
+pypdf~=6.9.2
+chromadb~=1.5.5
+langchain
+langchain-openai
+langchain-community
+psycopg2-binary
+tiktoken
+langchain-text-splitters~=1.1.1
