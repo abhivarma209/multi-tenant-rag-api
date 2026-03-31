@@ -8,7 +8,7 @@ from database import get_db, engine, Base
 from models import Tenant, Document
 from auth import get_current_tenant
 from chunker import extract_text, chunk_text
-from embedder import store_chunks, search_chunks
+from embedder import store_chunks, search_chunks, delete_document_chunks
 from generator import generate_answer
 
 logging.basicConfig(
@@ -118,3 +118,68 @@ async def query_documents(
     )
 
     return response
+
+
+
+# ── List documents ────────────────────────────────────
+@app.get("/documents")
+async def list_documents(
+    tenant: Tenant  = Depends(get_current_tenant),
+    db:     Session = Depends(get_db),
+):
+    documents = (
+        db.query(Document)
+        .filter(Document.tenant_id == tenant.id)
+        .order_by(Document.uploaded_at.desc())
+        .all()
+    )
+    return [
+        {
+            "document_id": str(doc.id),
+            "filename":    doc.filename,
+            "chunk_count": doc.chunk_count,
+            "uploaded_at": doc.uploaded_at,
+        }
+        for doc in documents
+    ]
+
+
+# ── Delete document ───────────────────────────────────
+@app.delete("/documents/{document_id}")
+async def delete_document(
+    document_id: str,
+    tenant:      Tenant  = Depends(get_current_tenant),
+    db:          Session = Depends(get_db),
+):
+    # find document — must belong to this tenant
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.tenant_id == tenant.id      # security — tenant can only delete their own
+        )
+        .first()
+    )
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        # delete from ChromaDB first
+        delete_document_chunks(document_id)
+
+        # then delete from Postgres
+        db.delete(document)
+        db.commit()
+
+        logger.info(
+            f"Document deleted | "
+            f"tenant={tenant.name} | "
+            f"file={document.filename}"
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+
+    return {"deleted": document_id, "filename": document.filename}

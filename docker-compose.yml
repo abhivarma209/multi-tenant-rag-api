@@ -23,9 +23,9 @@ services:
     ports:
       - "8001:8000"
     volumes:
-      - chroma_data:/chroma/chroma
+      - chroma_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8000'"]
       interval: 10s
       timeout: 5s
       retries: 5

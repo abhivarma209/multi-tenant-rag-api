@@ -265,3 +265,150 @@ Never call the LLM with no context — it will hallucinate.
 - Health check for orchestration (Kubernetes, Docker Compose depends_on)
 - Named volumes for data persistence
 - .env for secrets, never in code or image
+
+---
+
+## 11. RAGAS — Evaluating RAG Pipelines
+
+RAGAS answers: "How good is my RAG system, objectively?"
+Without it you're guessing. With it you have numbers.
+
+### What RAGAS measures
+
+**Faithfulness** — Did the answer come from the retrieved chunks?
+Checks whether every claim in the answer is traceable to the context.
+
+```
+Context:  "The invoice total is $30,798.89"
+Answer:   "The total is $30,798.89. Payment due in 30 days."
+                                     ↑ not in context → score drops
+```
+
+Score 1.0 = fully grounded. Score 0.0 = fully hallucinated.
+Low faithfulness → fix your system prompt or lower temperature.
+
+**Answer Relevancy** — Does the answer address the question?
+Re-embeds the answer and measures semantic similarity to the question.
+A vague or off-topic answer scores low even if factually correct.
+
+```
+Question: "What is the GST rate?"
+Answer:   "The invoice was issued by CloudStack Solutions."
+          ↑ True, but irrelevant → low answer relevancy
+```
+
+Low answer relevancy → fix your chunking or retrieval (wrong chunks returned).
+
+**Context Recall** (not run yet) — Did the retriever fetch the right chunks?
+Needs a full-sentence ground truth, not just a value. Diagnoses retrieval
+failures separately from generation failures.
+
+### The debugging matrix
+
+| Problem | Faithfulness | Answer Relevancy |
+|---------|-------------|-----------------|
+| LLM hallucinating | Low | Normal |
+| Bad retrieval | Normal | Low |
+| Both broken | Low | Low |
+
+### How RAGAS scores — it calls the LLM to judge
+
+RAGAS uses GPT internally to evaluate your answers. It's LLM-as-judge.
+5 test cases costs ~$0.01. Worth knowing before running in a loop.
+
+### What the eval loop must collect
+
+RAGAS needs four parallel lists:
+
+```python
+questions     = []   # the question string
+answers       = []   # result["answer"]  — just the string, not the full dict
+contexts      = []   # [chunk["text"] for chunk in chunks] — list of lists
+ground_truths = []   # expected answer string
+```
+
+The key mistake: `generate_answer` returns `{"answer": ..., "sources": ...}`.
+You need `result["answer"]`, not `result` itself.
+And contexts must be captured from `search_chunks` output before passing to generate.
+
+```python
+for case in TEST_CASES:
+    chunks = search_chunks(case["question"], tenant_id)
+    result = generate_answer(case["question"], chunks)
+
+    questions.append(case["question"])
+    answers.append(result["answer"])                          # string, not dict
+    contexts.append([chunk["text"] for chunk in chunks])      # list[str] per question
+    ground_truths.append(case["ground_truth"])
+```
+
+---
+
+## 12. Docker Volume Mount Bugs
+
+### Always verify persist_path matches volume mount
+
+ChromaDB logs its persist path on startup:
+```
+persist_path: "/data"
+```
+
+If your docker-compose mounts to a different path, data is written
+to the container filesystem and lost on every restart:
+
+```yaml
+# WRONG — volume mounted at /chroma/chroma but chromadb writes to /data
+volumes:
+  - chroma_data:/chroma/chroma
+
+# CORRECT — matches chromadb's actual persist_path
+volumes:
+  - chroma_data:/data
+```
+
+Symptom: Postgres has document records (chunk_count > 0) but ChromaDB
+collection returns 0 results. The document metadata survived (Postgres
+has its own volume) but the vectors didn't (written outside the volume).
+
+### How to verify
+
+```bash
+# check where chromadb is actually writing
+docker exec <chromadb-container> sh -c "ls /data/"
+docker exec <chromadb-container> sh -c "ls /chroma/chroma/"
+
+# check collection count
+python -c "
+from database import get_chroma_client, get_collection
+col = get_collection(get_chroma_client())
+print(col.count())
+"
+```
+
+---
+
+## 13. Docker Health Check — Know Your Image's Tools
+
+Health checks fail silently if the tool doesn't exist in the container.
+The container shows "unhealthy" but the real error is in inspect logs.
+
+```bash
+docker inspect <container> --format='{{range .State.Health.Log}}{{.Output}}{{end}}'
+```
+
+ChromaDB's image has neither `python`, `curl`, nor `wget` in PATH.
+Use bash's built-in TCP redirect instead:
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8000'"]
+```
+
+This opens a TCP connection to port 8000. Exit 0 = port accepting connections.
+No external tool needed — bash built-in only.
+
+### How to find what tools exist in an image
+
+```bash
+docker exec <container> sh -c "ls /usr/bin/"
+```

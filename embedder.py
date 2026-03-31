@@ -82,3 +82,16 @@ def search_chunks(
         })
 
     return chunks
+
+def delete_document_chunks(document_id: str) -> None:
+    chroma     = get_chroma_client()
+    collection = get_collection(chroma)
+
+    # get all chunk IDs for this document first
+    results = collection.get(
+        where={"document_id": document_id},
+        include=[]   # we only need IDs, not content
+    )
+
+    if results["ids"]:
+        collection.delete(ids=results["ids"])
