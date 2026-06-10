@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from database import get_db, engine, Base
+from eval import check_faithfulness
 from models import Tenant, Document
 from auth import get_current_tenant
 from chunker import extract_text, chunk_text
@@ -111,11 +112,20 @@ async def query_documents(
     chunks   = search_chunks(question, tenant.id)
     response = generate_answer(question, chunks)
 
-    logger.info(
+    if chunks:
+        contexts = [chunk["text"] for chunk in chunks]
+        response["faithfulness"] = check_faithfulness(
+            question, response["answer"], contexts
+        )
+
+    log_msg = (
         f"Query answered | "
         f"tenant={tenant.name} | "
         f"sources={len(response['sources'])}"
     )
+    if chunks:
+        log_msg += f" | faithfulness={response['faithfulness']:.2f}"
+    logger.info(log_msg)
 
     return response
 

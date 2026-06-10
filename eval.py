@@ -38,6 +38,18 @@ TEST_CASES = [
     },
 ]
 
+def check_faithfulness(question: str, answer: str, contexts: list[str]) -> float:
+    llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-4o-mini", temperature=0))
+    faithfulness.llm = llm
+
+    dataset = Dataset.from_dict({
+        "question": [question],
+        "answer": [answer],
+        "contexts": [contexts],
+    })
+    result = evaluate(dataset, metrics=[faithfulness])
+    return float(result.to_pandas()["faithfulness"].iloc[0])
+
 
 def run_eval(tenant_id: str):
     questions     = []
@@ -74,6 +86,10 @@ def run_eval(tenant_id: str):
 
 if __name__ == "__main__":
     import sys
+    import time
+    start = time.time()
     tenant_id = sys.argv[1] if len(sys.argv) > 1 else input("tenant_id: ")
     results = run_eval(tenant_id)
+    elapsed = time.time() - start
+    print(f"Faithfulness check took {elapsed:.2f}s")
     print(results)
